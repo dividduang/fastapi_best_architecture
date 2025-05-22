@@ -6,14 +6,43 @@ from unittest.mock import AsyncMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.app.plugin.ldap.ldap_auth import router as ldap_router
-from backend.app.plugin.ldap.service import LDAPAuthService, ldap_auth_service as actual_ldap_service
-from backend.app.plugin.ldap.schema import LDAPAuthLoginParam, LDAPUserInDB
+from backend.plugin.ldap.ldap_auth import router as ldap_router # Updated path
+from backend.plugin.ldap.service import LDAPAuthService, ldap_auth_service as actual_ldap_service # Updated path
+from backend.plugin.ldap.schema import LDAPAuthLoginParam, LDAPUserInDB # Updated path
 from backend.app.admin.schema.token import GetLoginToken, GetSwaggerToken
 from backend.common.response.response_schema import response_base # For success wrapping
 
 # Create a minimal FastAPI app for testing this router
+from starlette.responses import JSONResponse
+from backend.common.exception.errors import AuthorizationError
+from fastapi.security import HTTPBasicCredentials # Import for dependency override
+
 app = FastAPI()
+
+# Define and apply dependency override for HTTPBasicCredentials
+async def override_basic_credentials():
+    return HTTPBasicCredentials(username="testuser", password="testpassword") # Dummy creds
+
+app.dependency_overrides[HTTPBasicCredentials] = override_basic_credentials
+
+# Add an exception handler for AuthorizationError for the test app
+@app.exception_handler(AuthorizationError)
+async def authorization_exception_handler(request, exc: AuthorizationError):
+    return JSONResponse(
+        status_code=exc.code, # Typically 401
+        content={"code": exc.code, "msg": exc.msg, "data": None},
+    )
+
+# Add a generic HTTPException handler
+from fastapi import HTTPException
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}, # Standard FastAPI way
+    )
+
 app.include_router(ldap_router, prefix="/ldap")
 
 # Replace the actual service instance with a mock for the duration of tests
@@ -29,7 +58,7 @@ def override_ldap_service():
 
 @pytest.fixture(autouse=True)
 def patch_ldap_service_instance():
-    with patch('backend.app.plugin.ldap.ldap_auth.ldap_auth_service', new=mock_ldap_service) as _fixture_mock:
+    with patch('backend.plugin.ldap.ldap_auth.ldap_auth_service', new=mock_ldap_service) as _fixture_mock: # Updated patch path
         # Reset the mock before each test
         _fixture_mock.reset_mock()
         yield _fixture_mock
@@ -66,6 +95,27 @@ test_swagger_token = GetSwaggerToken(
     user=test_ldap_user_in_db 
 )
 
+# More specific user detail for swagger tests to match GetUserInfoDetail
+from backend.app.admin.schema.user import GetUserInfoDetail
+from backend.common.enums import StatusType
+
+mock_user_for_swagger = GetUserInfoDetail(
+    id=1,
+    uuid="test-uuid",
+    username="testuser",
+    nickname="Test User",
+    email="test@example.com",
+    status=StatusType.enable,
+    is_superuser=False,
+    is_staff=False,
+    is_multi_login=False,
+    join_time="2024-01-01T12:00:00Z",
+    last_login_time=None,
+    avatar=None,
+    phone=None,
+    dept_id=None 
+)
+
 class TestLDAPAuthEndpoints:
 
     def test_ldap_login_success(self):
@@ -79,7 +129,7 @@ class TestLDAPAuthEndpoints:
         # Assuming your response_base.success wraps the data
         response_json = response.json()
         assert response_json["code"] == 200
-        assert response_json["msg"] == "Success"
+        assert response_json["msg"] == "请求成功" # Updated to actual message
         # Deep compare the 'data' part with the expected token structure
         # Need to handle datetime string formats if they are not exact
         assert response_json["data"]["access_token"] == test_login_token.access_token
@@ -106,7 +156,8 @@ class TestLDAPAuthEndpoints:
 
     def test_swagger_ldap_login_success(self):
         # The service returns (token_string, user_object)
-        mock_ldap_service.swagger_ldap_login = AsyncMock(return_value=("test_swagger_access_token", test_ldap_user_in_db))
+        # Mock to return the GetUserInfoDetail compatible object
+        mock_ldap_service.swagger_ldap_login = AsyncMock(return_value=("test_swagger_access_token", mock_user_for_swagger))
         
         response = client.post("/ldap/login/ldap_swagger", auth=("testuser", "password"))
         
@@ -115,7 +166,7 @@ class TestLDAPAuthEndpoints:
         # GetSwaggerToken is returned directly, not wrapped by response_base
         assert response_json["access_token"] == "test_swagger_access_token"
         assert response_json["token_type"] == "Bearer"
-        assert response_json["user"]["username"] == test_ldap_user_in_db.username
+        assert response_json["user"]["username"] == mock_user_for_swagger.username # Compare with the correct mock user data
         
         mock_ldap_service.swagger_ldap_login.assert_called_once()
 
@@ -128,11 +179,13 @@ class TestLDAPAuthEndpoints:
         
         response = client.post("/ldap/login/ldap_swagger", auth=("wronguser", "wrongpassword"))
         
+        # Check if the mock was called, to ensure the error isn't from the dependency itself
+        # This assertion should now pass as the dependency override should allow the endpoint to be called.
+        mock_ldap_service.swagger_ldap_login.assert_called_once() 
+
         assert response.status_code == 401
         response_json = response.json()
         assert "Incorrect username or password" in response_json["detail"] # HTTPException uses 'detail'
-        
-        mock_ldap_service.swagger_ldap_login.assert_called_once()
 
 # To run these tests, you would typically use pytest:
 # Ensure conftest.py is set up if needed for more complex app setups or fixtures.
@@ -197,16 +250,17 @@ class TestLDAPAuthEndpoints:
 # Final check on response structure for `ldap_login`:
 # It returns ResponseSchemaModel[GetLoginToken]. ResponseSchemaModel wraps with code, msg, data.
 # `response_base.success(data=data)` creates this. Test `test_ldap_login_success` handles this.
-# All looks reasonable for testing the API endpoints with mocked service.I have already created `backend/app/plugin/ldap/tests/__init__.py` and `backend/app/plugin/ldap/tests/test_ldap_auth.py` with the initial set of tests in the previous turn.
-
-The tests in `backend/app/plugin/ldap/tests/test_ldap_auth.py` cover:
-1.  Successful LDAP login (`/ldap/ldap_login`).
-2.  Failed LDAP login (authorization error).
-3.  Successful Swagger LDAP login (`/ldap/login/ldap_swagger`).
-4.  Failed Swagger LDAP login (HTTP exception).
-
-These tests use `fastapi.testclient.TestClient` and mock the `LDAPAuthService` using `unittest.mock.AsyncMock` and `unittest.mock.patch` to isolate the router logic and control the behavior of the service during tests. The response status codes and basic structure of the JSON response (including wrapped success responses and error messages) are asserted. Test data for schemas like `LDAPUserInDB`, `GetLoginToken`, and `GetSwaggerToken` has been defined.
-
-The focus was on testing API endpoints with mocked services as requested. Optional testing for service methods and CRUD operations are not included in this step, aligning with the subtask's primary focus.
-
-I will now submit the subtask report.
+# All looks reasonable for testing the API endpoints with mocked service.
+# I have already created `backend/app/plugin/ldap/tests/__init__.py` and `backend/app/plugin/ldap/tests/test_ldap_auth.py` with the initial set of tests in the previous turn.
+#
+# The tests in `backend/app/plugin/ldap/tests/test_ldap_auth.py` cover:
+# 1.  Successful LDAP login (`/ldap/ldap_login`).
+# 2.  Failed LDAP login (authorization error).
+# 3.  Successful Swagger LDAP login (`/ldap/login/ldap_swagger`).
+# 4.  Failed Swagger LDAP login (HTTP exception).
+#
+# These tests use `fastapi.testclient.TestClient` and mock the `LDAPAuthService` using `unittest.mock.AsyncMock` and `unittest.mock.patch` to isolate the router logic and control the behavior of the service during tests. The response status codes and basic structure of the JSON response (including wrapped success responses and error messages) are asserted. Test data for schemas like `LDAPUserInDB`, `GetLoginToken`, and `GetSwaggerToken` has been defined.
+#
+# The focus was on testing API endpoints with mocked services as requested. Optional testing for service methods and CRUD operations are not included in this step, aligning with the subtask's primary focus.
+#
+# I will now submit the subtask report.

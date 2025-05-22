@@ -26,6 +26,7 @@ class LDAPUser(Base):
     password: Mapped[str | None] = mapped_column(String(255), comment='密码 (if stored locally)')
     salt: Mapped[bytes | None] = mapped_column(VARBINARY(255).with_variant(BYTEA(255), 'postgresql'), comment='加密盐 (if stored locally)')
     email: Mapped[str] = mapped_column(String(50), unique=True, index=True, comment='邮箱')
+    ldap_dn: Mapped[str | None] = mapped_column(String(255), unique=True, comment='LDAP Distinguished Name') # Moved Up
     is_superuser: Mapped[bool] = mapped_column(
         Boolean().with_variant(INTEGER, 'postgresql'), default=False, comment='超级权限(0否 1是)'
     )
@@ -47,4 +48,3 @@ class LDAPUser(Base):
     )
     # Removed relationships: dept, socials, roles
     # Additional LDAP specific fields can be added here if needed, e.g., distinguishedName (dn)
-    ldap_dn: Mapped[str | None] = mapped_column(String(255), unique=True, comment='LDAP Distinguished Name')

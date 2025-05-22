@@ -7,7 +7,7 @@ from backend.app.admin.api.v1.log import router as log_router
 from backend.app.admin.api.v1.monitor import router as monitor_router
 from backend.app.admin.api.v1.oauth2 import router as oauth2_router
 from backend.app.admin.api.v1.sys import router as sys_router
-from backend.app.plugin.ldap.ldap_auth import router as ldap_router # Import LDAP router
+from backend.plugin.ldap.ldap_auth import router as ldap_router # Updated path
 from backend.core.conf import settings
 
 v1 = APIRouter(prefix=settings.FASTAPI_API_V1_PATH)

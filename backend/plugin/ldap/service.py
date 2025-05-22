@@ -7,9 +7,9 @@ from fastapi.security import HTTPBasicCredentials
 from starlette.background import BackgroundTasks
 
 from backend.app.admin.schema.token import GetLoginToken, GetSwaggerToken # Use existing schemas for now
-from backend.app.plugin.ldap.schema import LDAPAuthLoginParam, LDAPUserInDB # Use LDAP specific schemas
-from backend.app.plugin.ldap.crud import crud_ldap_user # Placeholder CRUD
-from backend.app.plugin.ldap.model import LDAPUser # LDAP User model
+from backend.plugin.ldap.schema import LDAPAuthLoginParam, LDAPUserInDB # Updated path
+from backend.plugin.ldap.crud import crud_ldap_user # Updated path
+from backend.plugin.ldap.model import LDAPUser # Updated path
 
 from backend.common.security.jwt import create_access_token, create_refresh_token
 from backend.core.conf import settings

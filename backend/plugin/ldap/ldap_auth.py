@@ -9,9 +9,9 @@ from starlette.background import BackgroundTasks
 
 from backend.app.admin.schema.token import GetLoginToken, GetSwaggerToken
 # Import LDAPAuthLoginParam from the new location
-from backend.app.plugin.ldap.schema import LDAPAuthLoginParam
+from backend.plugin.ldap.schema import LDAPAuthLoginParam # Updated path
 # Remove old auth_service import
-from backend.app.plugin.ldap.service import ldap_auth_service # Import new LDAPAuthService instance
+from backend.plugin.ldap.service import ldap_auth_service # Updated path
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 
 

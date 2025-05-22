@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.plugin.ldap.model import LDAPUser
-from backend.app.plugin.ldap.schema import LDAPUserCreate, LDAPUserUpdate
+from backend.plugin.ldap.model import LDAPUser # Updated path
+from backend.plugin.ldap.schema import LDAPUserCreate, LDAPUserUpdate # Updated path
 from backend.database.db import uuid4_str # For default uuid if needed
 from backend.utils.timezone import timezone # For default join_time if needed
 
